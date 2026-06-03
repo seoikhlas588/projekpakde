@@ -14,17 +14,18 @@ def find_latest_url():
     html = requests.get(SOURCE_PAGE, timeout=30).text
 
     match = re.search(
-        r'Latest Blocklist\s*Version:\s*(20\d{6}-[a-f0-9]{16})',
+        r'(\d{8}-[a-f0-9]{16})',
         html
     )
 
     if not match:
-        raise Exception("Failed to find Latest Blocklist version")
+        raise Exception("Failed to find latest version")
 
     version = match.group(1)
+
     url = f"https://blocklist.skiddle.id/blocklist/versions/{version}.csv.zst"
 
-    print(f"Latest Blocklist version: {version}")
+    print(f"Latest version: {version}")
     print(f"Download URL: {url}")
 
     return url
@@ -32,7 +33,7 @@ def find_latest_url():
 def download_file(url):
     print(f"Downloading: {url}")
 
-    r = requests.get(url, stream=True, timeout=120)
+    r = requests.get(url, stream=True, timeout=180)
     r.raise_for_status()
 
     with open("latest.csv.zst", "wb") as f:
@@ -58,24 +59,39 @@ def update_database():
         cur = conn.cursor()
 
         print("Preparing staging table...")
-        cur.execute("DROP TABLE IF EXISTS blocklist_domains_staging;")
+
+        cur.execute("""
+            DROP TABLE IF EXISTS blocklist_domains_staging;
+        """)
+
         cur.execute("""
             CREATE TABLE blocklist_domains_staging (
                 domain VARCHAR(253)
             );
         """)
+
         conn.commit()
 
         print("Importing CSV...")
+
         with open("latest.csv", "r", encoding="utf-8", errors="ignore") as f:
             cur.copy_expert(
-                "COPY blocklist_domains_staging(domain) FROM STDIN WITH (FORMAT csv)",
+                """
+                COPY blocklist_domains_staging(domain)
+                FROM STDIN
+                WITH (FORMAT csv)
+                """,
                 f
             )
+
         conn.commit()
 
         print("Creating clean table...")
-        cur.execute("DROP TABLE IF EXISTS blocklist_domains_new;")
+
+        cur.execute("""
+            DROP TABLE IF EXISTS blocklist_domains_new;
+        """)
+
         cur.execute("""
             CREATE TABLE blocklist_domains_new AS
             SELECT DISTINCT LOWER(TRIM(domain)) AS domain
@@ -83,32 +99,60 @@ def update_database():
             WHERE domain IS NOT NULL
               AND TRIM(domain) <> '';
         """)
+
         conn.commit()
 
         print("Adding primary key...")
+
         cur.execute("""
             ALTER TABLE blocklist_domains_new
             ADD PRIMARY KEY(domain);
         """)
+
         conn.commit()
 
         print("Swapping tables...")
+
         cur.execute("BEGIN;")
-        cur.execute("DROP TABLE IF EXISTS blocklist_domains_old;")
-        cur.execute("ALTER TABLE blocklist_domains RENAME TO blocklist_domains_old;")
-        cur.execute("ALTER TABLE blocklist_domains_new RENAME TO blocklist_domains;")
-        cur.execute("DROP TABLE blocklist_domains_old;")
-        cur.execute("DROP TABLE blocklist_domains_staging;")
+
+        cur.execute("""
+            DROP TABLE IF EXISTS blocklist_domains_old;
+        """)
+
+        cur.execute("""
+            ALTER TABLE blocklist_domains
+            RENAME TO blocklist_domains_old;
+        """)
+
+        cur.execute("""
+            ALTER TABLE blocklist_domains_new
+            RENAME TO blocklist_domains;
+        """)
+
+        cur.execute("""
+            DROP TABLE blocklist_domains_old;
+        """)
+
+        cur.execute("""
+            DROP TABLE blocklist_domains_staging;
+        """)
+
         cur.execute("COMMIT;")
 
-        cur.execute("SELECT COUNT(*) FROM blocklist_domains;")
+        cur.execute("""
+            SELECT COUNT(*)
+            FROM blocklist_domains;
+        """)
+
         total = cur.fetchone()[0]
 
         print(f"Update complete. Total domains: {total}")
 
     except Exception as e:
         conn.rollback()
+
         print("Update failed:", e)
+
         sys.exit(1)
 
     finally:

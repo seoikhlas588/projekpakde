@@ -9,21 +9,29 @@ SOURCE_PAGE = "https://blocklist.skiddle.id/"
 DB_URL = os.environ["DATABASE_URL"]
 
 def find_latest_url():
+    print("Fetching latest version info...")
+
     html = requests.get(SOURCE_PAGE, timeout=30).text
 
     matches = re.findall(
-        r'https://blocklist\.skiddle\.id/blocklist/versions/[A-Za-z0-9\-]+\.csv\.zst',
+        r'20\d{6}-[a-f0-9]{16}',
         html
     )
 
-    if matches:
-        return matches[0]
+    if not matches:
+        raise Exception("Failed to find latest version from All Versions table")
 
-    # fallback kalau halaman tidak bisa diparse
-    return "https://blocklist.skiddle.id/blocklist/versions/20260602-99b3d889fe9b6fbc.csv.zst"
+    latest_version = matches[0]
+    latest_url = f"https://blocklist.skiddle.id/blocklist/versions/{latest_version}.csv.zst"
+
+    print(f"Latest table version: {latest_version}")
+    print(f"Download URL: {latest_url}")
+
+    return latest_url
 
 def download_file(url):
     print(f"Downloading: {url}")
+
     r = requests.get(url, stream=True, timeout=120)
     r.raise_for_status()
 
@@ -34,6 +42,7 @@ def download_file(url):
 
 def decompress_file():
     print("Decompressing...")
+
     dctx = zstd.ZstdDecompressor()
 
     with open("latest.csv.zst", "rb") as src, open("latest.csv", "wb") as dst:
@@ -41,6 +50,7 @@ def decompress_file():
 
 def update_database():
     print("Connecting to database...")
+
     conn = psycopg2.connect(DB_URL)
     conn.autocommit = False
 

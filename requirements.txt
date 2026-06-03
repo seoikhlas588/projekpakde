@@ -1,3 +1,4 @@
 requests
 zstandard
 psycopg2-binary
+playwright

@@ -1,4 +1,4 @@
-# ProjekPakde — Auto Update Kominfo Blocklist Database
+# ProjekPakde — Auto Update Blocklist Database
 
 Automatic updater for Indonesian blocked domains database using PostgreSQL + Railway Cron.
 
@@ -114,7 +114,7 @@ python update_blocklist.py
 
 * 9M+ domains
 * Daily updated
-* Source: Kominfo blocklist mirror
+* Source: blocklist mirror
 
 ---
 

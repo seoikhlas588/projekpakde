@@ -11,21 +11,33 @@ DB_URL = os.environ["DATABASE_URL"]
 def find_latest_url():
     print("Fetching latest version info...")
 
-    html = requests.get(SOURCE_PAGE, timeout=30).text
+    try:
+        html = requests.get(SOURCE_PAGE, timeout=30).text
 
-    matches = re.findall(
-        r'20\d{6}-[a-f0-9]{16}',
-        html
-    )
+        patterns = [
+            r'Latest Blocklist[\s\S]*?Version:\s*(20\d{6}-[a-f0-9]{16})',
+            r'Version:\s*(20\d{6}-[a-f0-9]{16})',
+            r'(20\d{6}-[a-f0-9]{16})'
+        ]
 
-    if not matches:
-        raise Exception("Failed to find latest version from All Versions table")
+        for pattern in patterns:
+            match = re.search(pattern, html)
+            if match:
+                latest_version = match.group(1)
+                latest_url = f"https://blocklist.skiddle.id/blocklist/versions/{latest_version}.csv.zst"
 
-    latest_version = matches[0]
-    latest_url = f"https://blocklist.skiddle.id/blocklist/versions/{latest_version}.csv.zst"
+                print(f"Latest version: {latest_version}")
+                print(f"Download URL: {latest_url}")
 
-    print(f"Latest table version: {latest_version}")
-    print(f"Download URL: {latest_url}")
+                return latest_url
+
+        print("No version found from page.")
+
+    except Exception as e:
+        print(f"Failed to fetch/parse latest page: {e}")
+
+    latest_url = "https://blocklist.skiddle.id/blocklist/latest.csv.zst"
+    print(f"Using latest fallback URL: {latest_url}")
 
     return latest_url
 

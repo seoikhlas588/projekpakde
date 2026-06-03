@@ -1,58 +1,21 @@
 import os
-import re
 import sys
 import requests
-import zstandard as zstd
 import psycopg2
-from playwright.sync_api import sync_playwright
 
-SOURCE_PAGE = "https://blocklist.skiddle.id/"
 DB_URL = os.environ["DATABASE_URL"]
+DOWNLOAD_URL = "https://github.com/Skiddle-ID/blocklist/releases/download/latest/domains.txt"
 
-def find_latest_url():
-    print("Opening page with browser...")
+def download_file():
+    print(f"Downloading: {DOWNLOAD_URL}")
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
-        page.goto(SOURCE_PAGE, wait_until="networkidle", timeout=60000)
-        page.wait_for_selector("#versions-table tbody tr", timeout=60000)
-
-        html = page.content()
-        browser.close()
-
-    match = re.search(
-        r'href="(https://blocklist\.skiddle\.id/blocklist/versions/\d{8}-[a-f0-9]{16}\.csv\.zst)"',
-        html
-    )
-
-    if not match:
-        raise Exception("Failed to find download URL from rendered page")
-
-    url = match.group(1)
-
-    print(f"Download URL: {url}")
-
-    return url
-
-def download_file(url):
-    print(f"Downloading: {url}")
-
-    r = requests.get(url, stream=True, timeout=180)
+    r = requests.get(DOWNLOAD_URL, stream=True, timeout=300)
     r.raise_for_status()
 
-    with open("latest.csv.zst", "wb") as f:
+    with open("domains.txt", "wb") as f:
         for chunk in r.iter_content(chunk_size=1024 * 1024):
             if chunk:
                 f.write(chunk)
-
-def decompress_file():
-    print("Decompressing...")
-
-    dctx = zstd.ZstdDecompressor()
-
-    with open("latest.csv.zst", "rb") as src, open("latest.csv", "wb") as dst:
-        dctx.copy_stream(src, dst)
 
 def update_database():
     print("Connecting to database...")
@@ -67,15 +30,15 @@ def update_database():
         cur.execute("DROP TABLE IF EXISTS blocklist_domains_staging;")
         cur.execute("""
             CREATE TABLE blocklist_domains_staging (
-                domain VARCHAR(253)
+                domain TEXT
             );
         """)
         conn.commit()
 
-        print("Importing CSV...")
-        with open("latest.csv", "r", encoding="utf-8", errors="ignore") as f:
+        print("Importing TXT...")
+        with open("domains.txt", "r", encoding="utf-8", errors="ignore") as f:
             cur.copy_expert(
-                "COPY blocklist_domains_staging(domain) FROM STDIN WITH (FORMAT csv)",
+                "COPY blocklist_domains_staging(domain) FROM STDIN",
                 f
             )
         conn.commit()
@@ -121,7 +84,5 @@ def update_database():
         conn.close()
 
 if __name__ == "__main__":
-    latest_url = find_latest_url()
-    download_file(latest_url)
-    decompress_file()
+    download_file()
     update_database()
